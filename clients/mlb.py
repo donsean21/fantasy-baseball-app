@@ -9,6 +9,7 @@ from urllib.request import urlopen
 
 
 MLB_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule"
+MLB_API_TIMEOUT_SECONDS = 10
 
 
 class MlbApiError(RuntimeError):
@@ -26,9 +27,9 @@ def fetch_probable_starters(start_date: date, end_date: date) -> list[dict[str, 
     url = f"{MLB_SCHEDULE_URL}?{urlencode(params)}"
 
     try:
-        with urlopen(url, timeout=20) as response:
+        with urlopen(url, timeout=MLB_API_TIMEOUT_SECONDS) as response:
             payload = json.load(response)
-    except (HTTPError, URLError, TimeoutError) as exc:
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
         raise MlbApiError(f"Unable to fetch MLB probable starters: {exc}") from exc
 
     starters: list[dict[str, Any]] = []

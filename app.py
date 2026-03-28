@@ -11,41 +11,60 @@ from services.scoring import build_matchup_rating, build_streamer_score
 
 st.set_page_config(page_title="Fantasy Baseball Pitcher Streamer", layout="wide")
 
+TABLE_COLUMNS = [
+    "pitcher name",
+    "team",
+    "opponent",
+    "home/away",
+    "start date",
+    "projected starts",
+    "matchup rating",
+    "streamer score",
+    "venue",
+]
+
+
+def build_empty_streamer_dataframe() -> pd.DataFrame:
+    return pd.DataFrame(columns=TABLE_COLUMNS)
+
 
 @st.cache_data(ttl=60 * 30, show_spinner=False)
 def load_streamer_table(days: int = 7) -> tuple[pd.DataFrame, str | None]:
-    starters, source_note = get_probable_starters(days=days)
-    rows = []
+    try:
+        starters, source_note = get_probable_starters(days=days)
+        rows = []
 
-    for starter in starters:
-        matchup_rating = build_matchup_rating(
-            opponent_strength=starter["opponent_strength"],
-            ballpark_factor=starter["ballpark_factor"],
-            home_away=starter["home_away"],
-        )
-        streamer_score = build_streamer_score(
-            opponent_strength=starter["opponent_strength"],
-            ballpark_factor=starter["ballpark_factor"],
-            projected_starts=starter["projected_starts"],
-        )
+        for starter in starters:
+            matchup_rating = build_matchup_rating(
+                opponent_strength=starter["opponent_strength"],
+                ballpark_factor=starter["ballpark_factor"],
+                home_away=starter["home_away"],
+            )
+            streamer_score = build_streamer_score(
+                opponent_strength=starter["opponent_strength"],
+                ballpark_factor=starter["ballpark_factor"],
+                projected_starts=starter["projected_starts"],
+            )
 
-        rows.append(
-            {
-                "pitcher name": starter["pitcher_name"],
-                "team": starter["team"],
-                "opponent": starter["opponent"],
-                "home/away": starter["home_away"],
-                "start date": starter["start_date"],
-                "projected starts": starter["projected_starts"],
-                "matchup rating": matchup_rating,
-                "streamer score": streamer_score,
-                "venue": starter["venue_name"],
-            }
-        )
+            rows.append(
+                {
+                    "pitcher name": starter["pitcher_name"],
+                    "team": starter["team"],
+                    "opponent": starter["opponent"],
+                    "home/away": starter["home_away"],
+                    "start date": starter["start_date"],
+                    "projected starts": starter["projected_starts"],
+                    "matchup rating": matchup_rating,
+                    "streamer score": streamer_score,
+                    "venue": starter["venue_name"],
+                }
+            )
+    except Exception as exc:  # pragma: no cover - defensive UI guard
+        return build_empty_streamer_dataframe(), f"Unable to load starter data: {exc}"
 
     dataframe = pd.DataFrame(rows)
     if dataframe.empty:
-        return dataframe, source_note
+        return build_empty_streamer_dataframe(), source_note
 
     return (
         dataframe.sort_values(by=["streamer score", "start date"], ascending=[False, True]),
@@ -62,11 +81,17 @@ def load_yahoo_free_agents(league_key: str, auth_config: YahooAuthConfig) -> pd.
 st.title("Yahoo Fantasy Baseball Pitcher Streamer")
 st.caption("Live MLB probable starters, with optional Yahoo free-agent filtering for your league.")
 
+if "load_live_data" not in st.session_state:
+    st.session_state.load_live_data = False
+
 with st.sidebar:
     st.header("Filters")
     days_ahead = st.slider("Days ahead", min_value=3, max_value=7, value=7)
     minimum_score = st.slider("Minimum streamer score", min_value=0, max_value=100, value=40)
     show_top_n = st.selectbox("Show top options", options=[5, 10, 15], index=1)
+    load_button_label = "Refresh live data" if st.session_state.load_live_data else "Load live data"
+    if st.button(load_button_label, type="primary", use_container_width=True):
+        st.session_state.load_live_data = True
     st.divider()
     st.header("Yahoo League")
     enable_yahoo = st.checkbox("Filter to Yahoo free agents", value=False)
@@ -84,14 +109,19 @@ with st.sidebar:
     st.caption(f"Yahoo auth source: {yahoo_auth_config.source_label}.")
     st.caption(f"Yahoo redirect URI: {yahoo_auth_config.callback_uri}")
 
-dataframe, source_note = load_streamer_table(days=days_ahead)
+if not st.session_state.load_live_data:
+    st.info(
+        "The app UI is ready. Click `Load live data` in the sidebar to fetch current MLB probable starters."
+    )
+    st.subheader("Recommended Free-Agent Pitchers")
+    st.dataframe(build_empty_streamer_dataframe(), use_container_width=True, hide_index=True)
+    st.stop()
+
+with st.spinner("Loading live MLB probable starters..."):
+    dataframe, source_note = load_streamer_table(days=days_ahead)
 
 if source_note:
     st.warning(source_note)
-
-if dataframe.empty:
-    st.error("No probable starters were returned for the selected window.")
-    st.stop()
 
 if enable_yahoo:
     if not league_key.strip():
@@ -123,6 +153,9 @@ col3.metric("Best Streamer Score", int(dataframe["streamer score"].max()) if not
 
 st.subheader("Recommended Free-Agent Pitchers")
 st.dataframe(filtered, use_container_width=True, hide_index=True)
+
+if dataframe.empty:
+    st.info("No probable starters are available right now. Try refreshing again in a few minutes.")
 
 st.subheader("How the score works")
 st.write(

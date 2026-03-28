@@ -58,6 +58,8 @@ fantasy-baseball-app/
 
    [http://localhost:8501](http://localhost:8501)
 
+7. Click `Load live data` in the sidebar to fetch the current MLB probable starters.
+
 ## Yahoo Setup
 
 Yahoo filtering is optional.
@@ -311,6 +313,7 @@ Result:
 - Your code stays in GitHub.
 - Your secrets stay out of GitHub.
 - The deployed app works from your phone at the Streamlit URL.
+- The app UI loads first, and live MLB data is fetched only after you click `Load live data`.
 
 ## Notes
 
